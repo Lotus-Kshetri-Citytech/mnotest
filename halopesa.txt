@@ -1,0 +1,130 @@
+# providers/halo_pesa.py
+import random
+import string
+import xml.etree.ElementTree as ET
+from datetime import datetime
+from flask import Blueprint, request, Response
+import time
+import threading
+import requests
+import os
+
+# Create the Blueprint instance for this provider
+halopesa = Blueprint('halopesa', __name__)
+
+# --- Configuration ---
+CALLBACK_DELAY_SECONDS = 3
+JAVA_CALLBACK_URL = 'https://appuat.instantpaygateway.com/payment-engine/halopesa/push/callback'
+# JAVA_CALLBACK_URL='http://localhost:8080/payment-engine/halopesa/push/callback' # For local testing
+
+def generate_random_numeric(length):
+    """Generate a random numeric string of specified length."""
+    return ''.join(random.choices(string.digits, k=length))
+
+def extract_request_data(root):
+    """Extracts key data fields from the incoming Halo Pesa SOAP request."""
+    try:
+        # Attempt to find the 'request' element, handling potential namespace variations
+        request_element = None
+        for elem in root.iter():
+            if elem.tag and elem.tag.split('}')[-1] == 'request':
+                request_element = elem
+                break
+
+        if request_element is not None:
+            def get_text_or_default(tag, default="UNKNOWN"):
+                elem = request_element.find(tag)
+                return elem.text if elem is not None and elem.text else default
+
+            # Extract relevant fields for callback
+            return {
+                'request_id': get_text_or_default('requestid'),
+                'reference_id': get_text_or_default('referenceid'),
+                'amount': get_text_or_default('amount', '0'),
+                'sender_msisdn': get_text_or_default('sender_msisdn'),
+            }
+    except Exception:
+        pass # Silently handle extraction errors, defaults will be used
+
+    # Return defaults if parsing fails or fields are missing
+    return {
+        'request_id': 'UNKNOWN_REQUEST',
+        'reference_id': 'UNKNOWN_REF',
+        'amount': '0',
+        'sender_msisdn': 'UNKNOWN',
+    }
+
+@halopesa.route('/ws/HaloPesaService', methods=['POST'])
+def halo_pesa_service():
+    # --- 1. Receive and Parse Request ---
+    xml_request = request.get_data(as_text=True)
+    try:
+        root = ET.fromstring(xml_request)
+        request_data = extract_request_data(root)
+        request_id = request_data['request_id']
+        reference_id = request_data['reference_id']
+        amount = request_data['amount']
+        sender_msisdn = request_data['sender_msisdn']
+    except Exception:
+        request_id, reference_id, amount, sender_msisdn = "ERROR", "ERROR", "0", "ERROR"
+
+    # --- 2. Prepare and Send ACK Response ---
+    current_time = datetime.now().strftime('%Y%m%d%H%M%S')
+    ack_response_xml = f"""<?xml version='1.0' encoding='UTF-8'?>
+<S:Envelope xmlns:S="http://schemas.xmlsoap.org/soap/envelope/">
+    <S:Body>
+        <ns2:HaloPesaServiceAPIResponse xmlns:ns2="http://ws.merchant.vmoney.viettel.com/">
+            <return>
+                <message>Payment received</message>
+                <referenceid>{reference_id}</referenceid>
+                <requestid>{request_id}</requestid>
+                <response_code>0</response_code>
+                <response_time>{current_time}</response_time>
+                <response_type>ACK</response_type>
+            </return>
+        </ns2:HaloPesaServiceAPIResponse>
+    </S:Body>
+</S:Envelope>"""
+
+    # --- 3. Schedule Callback in Background Thread ---
+    callback_thread = threading.Thread(
+        target=send_callback_after_delay,
+        args=(request_id, reference_id, amount, sender_msisdn),
+        daemon=True
+    )
+    callback_thread.start()
+
+    # --- 4. Return ACK Immediately ---
+    return Response(ack_response_xml, status=200, content_type='text/xml; charset=UTF-8')
+
+def send_callback_after_delay(request_id, reference_id, amount, sender_msisdn):
+    """
+    Function run in a background thread to send the FIN callback after a delay.
+    """
+    time.sleep(CALLBACK_DELAY_SECONDS)
+
+    callback_time = datetime.now().strftime('%Y%m%d%H%M%S')
+    transaction_id = generate_random_numeric(10)
+
+    callback_xml = f"""<?xml version='1.0' encoding='UTF-8'?>
+<S:Envelope xmlns:S="http://schemas.xmlsoap.org/soap/envelope/">
+    <S:Body>
+        <ns2:HaloPesaServiceAPIResponse xmlns:ns2="http://service.com/">
+            <return>
+                <response_code>0</response_code>
+                <message>SUCCESS</message>
+                <referenceid>{reference_id}</referenceid>
+                <transactionId>{transaction_id}</transactionId>
+                <response_time>{callback_time}</response_time>
+                <response_type>FIN</response_type>
+                <addition_data>{transaction_id}</addition_data>
+            </return>
+        </ns2:HaloPesaServiceAPIResponse>
+    </S:Body>
+</S:Envelope>"""
+
+    try:
+        headers = {'Content-Type': 'text/xml; charset=UTF-8'}
+        response = requests.post(JAVA_CALLBACK_URL, data=callback_xml, headers=headers, timeout=30)
+    except requests.exceptions.RequestException:
+        pass
