@@ -1,0 +1,64 @@
+Request:
+<SOAP-ENV:Envelope
+    xmlns:SOAP-ENV="http://schemas.xmlsoap.org/soap/envelope/"
+    xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/"
+    xmlns:ws="http://ws.merchant.vmoney.viettel.com/">
+    <SOAP-ENV:Header/>
+    <SOAP-ENV:Body>
+        <ws:HaloPesaServiceAPI>
+            <request>
+                <requestid>39b0bdcbb53043ec8d85cd24ffd793ed</requestid>
+                <username>instant</username>
+                <password>Pw(g#*#dP62YFl@9</password>
+                <request_time>20250724131822</request_time>
+                <amount>100</amount>
+                <sender_msisdn>255619048818</sender_msisdn>
+                <beneficiary_accountid>143805</beneficiary_accountid>
+                <referenceid>39b0bdcbb53043e</referenceid>
+                <business_no/>
+                <function_code>ASYNC_PAYMENT_USSD_PUSH</function_code>
+                <addition_data/>
+                <check_sum>3cf27e9f9f66d0c393f38e04138cbd26880662abe0ed642b2a83fd95e981fe0d</check_sum>
+            </request>
+        </ws:HaloPesaServiceAPI>
+    </SOAP-ENV:Body>
+</SOAP-ENV:Envelope>
+
+Response:
+<?xml version="1.0" ?>
+<S:Envelope
+    xmlns:S="http://schemas.xmlsoap.org/soap/envelope/">
+    <S:Body>
+        <ns2:HaloPesaServiceAPIResponse
+            xmlns:ns2="http://ws.merchant.vmoney.viettel.com/">
+            <return>
+                <message>Payment received</message>
+                <referenceid>39b0bdcbb53043e</referenceid>
+                <requestid>39b0bdcbb53043ec8d85cd24ffd793ed</requestid>
+                <response_code>0</response_code>
+                <response_time>20250724131822</response_time>
+                <response_type>ACK</response_type>
+            </return>
+        </ns2:HaloPesaServiceAPIResponse>
+    </S:Body>
+</S:Envelope>
+
+CallBackRequest:
+
+<S:Envelope
+    xmlns:S="http://schemas.xmlsoap.org/soap/envelope/">
+    <S:Body>
+        <ns2:HaloPesaServiceAPIResponse
+            xmlns:ns2="http://service.com/">
+            <return>
+                <response_code>0</response_code>
+                <message>SUCCESS</message>
+                <referenceid>39b0bdcbb53043e</referenceid>
+                <transactionId>3476335420</transactionId>
+                <response_time>20250724131834</response_time>
+                <response_type>FIN</response_type>
+                <addition_data>3476335420</addition_data>
+            </return>
+        </ns2:HaloPesaServiceAPIResponse>
+    </S:Body>
+</S:Envelope>
